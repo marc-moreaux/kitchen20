@@ -7,23 +7,27 @@ import numpy as np
 import pandas as pd
 from os.path import join
 from torch.utils.data import Dataset, DataLoader
-from utils import filter_silent_audio, convert_ar
-import utils as U
+from . import utils as U
+
+
+package_dir, _ = os.path.split(os.path.abspath(__file__))
+dl_dir = os.path.join(package_dir, '..')
 
 
 class Kitchen20(Dataset):
     """Kitchen20 dataset accessor for pytorch"""
 
     def __init__(self,
-                 root,
+                 root=dl_dir,
                  csv_file='kitchen20.csv',
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
                  folds=[1,2,3,4,5],
-                 transforms=None,
+                 transforms=[],
                  use_bc_learning=False,
-                 strong_augment=True):
+                 strong_augment=False,
+                 compute_features=False):
         """
         Args:
             root (string): Root directory of dataset where directory
@@ -57,6 +61,18 @@ class Kitchen20(Dataset):
         self.use_bc_learning = use_bc_learning
         self.strongAugment = strong_augment
         self.get_db_folds()  # Fils self.sounds and self.labels
+        
+        # Maybe compute mfcc and zcr
+        if compute_features:
+            self.compute_features()
+
+    def compute_features(self):
+        self.mfcc = []
+        self.zcr = []
+        for s in self.sounds:
+            s = s / float(2 ** 16 / 2)
+            self.mfcc.append(U.compute_mfcc(s, self.audio_rate, 512))
+            self.zcr.append(U.compute_zcr(s, 512))
 
     def _ordered_classes(self):
         classes = set(zip(self.df.target, self.df.category))
@@ -71,11 +87,13 @@ class Kitchen20(Dataset):
         full_db = np.load(self.db_path)
         self.sounds = []
         self.labels = []
+        self.folds_nb = []
         for fold in self.folds:
-            self.sounds.extend(
-                full_db['fold{}'.format(fold)].item()['sounds'])
-            self.labels.extend(
-                full_db['fold{}'.format(fold)].item()['labels'])
+            sounds = full_db['fold{}'.format(fold)].item()['sounds']
+            labels = full_db['fold{}'.format(fold)].item()['labels']
+            self.sounds.extend(sounds)
+            self.labels.extend(labels)
+            self.folds_nb.extend([fold, ] * len(labels))
 
     def preprocess(self, sound):
         for f in self.transforms:
@@ -120,7 +138,7 @@ class Kitchen20(Dataset):
             src_path = join(self.root, row.path)
             dst_path = src_path.replace('audio/', 'tmp/')
             os.makedirs(join(self.root, 'tmp'), exist_ok=True)
-            convert_ar(src_path, dst_path, self.audio_rate)
+            U.convert_ar(src_path, dst_path, self.audio_rate)
 
         # Create npz file
         print('Creating corresponding npz file...')
@@ -139,7 +157,7 @@ class Kitchen20(Dataset):
                     end = sound.nonzero()[0].max()
                     sound = sound[start: end + 1]
                 else:
-                    sound = filter_silent_audio(
+                    sound = U.filter_silent_audio(
                         sound,
                         self.audio_rate,
                         m_section_engy_thr=self.threshold_sound)
@@ -164,6 +182,7 @@ if __name__ == '__main__':
     transforms += [U.random_flip()]  # Random +-
 
     train = Kitchen20(root='../',
+                      folds=[1,2,3,4],
                       transforms=transforms,
                       overwrite=False,
                       use_bc_learning=True)
@@ -176,6 +195,7 @@ if __name__ == '__main__':
     transforms += [U.random_flip()]  # Random +-
 
     test = Kitchen20(root='../',
+                     folds=[5,],
                      transforms=transforms,
                      overwrite=False)
 

@@ -1,12 +1,44 @@
 from os.path import join
 import numpy as np
 import subprocess
+import librosa
 import random
 import torch
 import glob
 import os
 
 import chainer.functions as F
+
+
+def compute_mfcc(sound, rate, frame=512):
+    '''MFCC computation with default settings
+    (2048 FFT window length, 512 hop length, 128 bands)'''
+    melspectrogram = librosa.feature.melspectrogram(sound,
+                                                    sr=rate,
+                                                    hop_length=frame)
+    logamplitude = librosa.amplitude_to_db(melspectrogram)
+    mfcc = librosa.feature.mfcc(S=logamplitude, n_mfcc=13).transpose()
+    return mfcc
+        
+
+def compute_zcr(sound, frame_size=512):
+    '''Compute zero crossing rate'''
+
+    def _get_frame(sound, index):
+        if index < 0:
+            return None
+        return sound[(index * frame_size):(index + 1) * frame_size]
+
+    zcr = []
+    frames = int(np.ceil(len(sound) / frame_size))
+    
+    for i in range(0, frames):
+        frame = _get_frame(sound, i)
+        zcr.append(np.mean(0.5 * np.abs(np.diff(np.sign(frame)))))
+
+    zcr = np.asarray(zcr)
+    return zcr
+
 
 def convert_ar(src_path, dst_path, ar):
     if not os.path.isfile(dst_path):
