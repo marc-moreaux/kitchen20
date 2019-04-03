@@ -174,29 +174,26 @@ class Kitchen20(Dataset):
 if __name__ == '__main__':
     inputLength = 48000
     nCrops = 5
-    transforms = []
-    transforms += [U.random_scale(1.25)]  # Strong augment
-    transforms += [U.padding(inputLength // 2)]  # Padding
-    transforms += [U.random_crop(inputLength)]  # Random crop
-    transforms += [U.normalize(float(2 ** 16 / 2))]  # 16 bit signed
-    transforms += [U.random_flip()]  # Random +-
 
     train = Kitchen20(root='../',
                       folds=[1,2,3,4],
-                      transforms=transforms,
+                      transforms=[
+                          U.random_scale(1.25),  # Strong augment
+                          U.padding(inputLength // 2),  # Padding
+                          U.random_crop(inputLength),  # Random crop
+                          U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
+                          U.random_flip()],  # Random +-
                       overwrite=False,
                       use_bc_learning=True)
     train[3]
 
-    transforms = []
-    transforms += [U.padding(inputLength // 2)]  # Long audio
-    transforms += [U.normalize(float(2 ** 16 / 2))]  # 16 bit signed
-    transforms += [U.multi_crop(inputLength, nCrops)]  # Multiple crops
-    transforms += [U.random_flip()]  # Random +-
-
     test = Kitchen20(root='../',
                      folds=[5,],
-                     transforms=transforms,
+                     transforms=[
+                         U.padding(inputLength // 2),  # Long audio
+                         U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
+                         U.multi_crop(inputLength, nCrops),  # Multiple crops
+                         U.random_flip()],  # Random +-
                      overwrite=False)
 
     def mtest(idx):
@@ -208,4 +205,5 @@ if __name__ == '__main__':
         sd.play(audio, 16000)
         plt.plot(audio)
         plt.show()
+
     mtest(3)
