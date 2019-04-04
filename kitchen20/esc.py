@@ -12,6 +12,10 @@ from abc import ABC, abstractmethod
 
 package_dir, _ = os.path.split(os.path.abspath(__file__))
 dl_dir = os.path.join(package_dir, '..')
+ESC10_PATH = '/media/moreaux-gpu/Data/Dataset/ESC-50'
+ESC50_PATH = '/media/moreaux-gpu/Data/Dataset/ESC-50'
+ESC70_PATH = ['/media/moreaux-gpu/Data/Dataset/ESC-50', dl_dir]
+KITCHEN20_PATH = dl_dir
 
 
 class ESC(Dataset, ABC):
@@ -44,16 +48,13 @@ class ESC(Dataset, ABC):
 
         # Dataset generation
         self.csv_file = csv_file
-        self.df = pd.read_csv(join(root, csv_file))
+        if 'df' not in self.__dir__():
+            self.df = pd.read_csv(join(root, csv_file))
         self.audio_rate = audio_rate
         self.threshold_sound = threshold_sound
         self.db_path = join(self.root, './audio/{}.npz'.format(audio_rate))
         self.classes = self._ordered_classes()
         self.nClasses = len(self.classes)
-
-        # Maybe fix path in df
-        if 'path' not in self.df.keys():
-            self.df['path'] = 'audio/' + self.df.filename
 
         # Maybe create dataset
         if not os.path.isfile(self.db_path) or overwrite:
@@ -93,8 +94,10 @@ class ESC(Dataset, ABC):
         self.labels = []
         self.folds_nb = []
         for fold in self.folds:
-            sounds = full_db['fold{}'.format(fold)].item()['sounds']
-            labels = full_db['fold{}'.format(fold)].item()['labels']
+            fold_name = 'fold{}'.format(fold)
+            print('loading ', fold_name)
+            sounds = full_db[fold_name].item()['sounds']
+            labels = full_db[fold_name].item()['labels']
             self.sounds.extend(sounds)
             self.labels.extend(labels)
             self.folds_nb.extend([fold, ] * len(labels))
@@ -134,15 +137,51 @@ class ESC(Dataset, ABC):
         
         return sound, label
 
-    @abstractmethod
     def _create_dataset(self):
-        pass
+        # Convert audio
+        print('Converting sounds to {}Hz...'.format(
+            self.audio_rate))
+        for idx, row in self.df.iterrows():
+            src_path = join(self.root, row.path)
+            dst_path = src_path.replace('audio/', 'tmp/')
+            os.makedirs(join(self.root, 'tmp'), exist_ok=True)
+            U.convert_ar(src_path, dst_path, self.audio_rate)
+
+        # Create npz file
+        print('Creating corresponding npz file...')
+        dataset = {}
+        for fold in range(1, 6):
+            fold_name = 'fold{}'.format(fold)
+            dataset[fold_name] = {}
+            dataset[fold_name]['sounds'] = []
+            dataset[fold_name]['labels'] = []
+
+            for idx, row in self.df[self.df.fold == fold].iterrows():
+                wav_file = row.path.replace('audio/', 'tmp/')
+                wav_file = join(self.root, wav_file)
+                sound = wavio.read(wav_file).data.T[0]
+                if self.threshold_sound == 0:  # Remove silent sections
+                    start = sound.nonzero()[0].min()
+                    end = sound.nonzero()[0].max()
+                    sound = sound[start: end + 1]
+                else:
+                    sound = U.filter_silent_audio(
+                        sound,
+                        self.audio_rate,
+                        m_section_engy_thr=self.threshold_sound)
+                label = row.target
+                dataset[fold_name]['sounds'].append(sound)
+                dataset[fold_name]['labels'].append(label)
+
+        print('Saving')
+        np.savez(self.db_path, **dataset)
+        shutil.rmtree(join(self.root, 'tmp'))
 
 
 class ESC50(ESC):
     def __init__(self,
                  csv_file='meta/esc50.csv',
-                 root=dl_dir,
+                 root=ESC50_PATH,
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
@@ -151,260 +190,111 @@ class ESC50(ESC):
                  use_bc_learning=False,
                  strong_augment=False,
                  compute_features=False):
-        super().__init__(csv_file=csv_file,
-                         root=root,
-                         threshold_sound=threshold_sound,
-                         audio_rate=audio_rate,
-                         overwrite=overwrite,
-                         folds=folds,
-                         transforms=transforms,
-                         use_bc_learning=use_bc_learning,
-                         strong_augment=strong_augment,
-                         compute_features=compute_features)
+        # Fix path in df
+        self.df = pd.read_csv(join(root, csv_file))
+        self.df['path'] = 'audio/' + self.df.filename
 
-        
+        super().__init__(
+            csv_file=csv_file,
+            root=root,
+            threshold_sound=threshold_sound,
+            audio_rate=audio_rate,
+            overwrite=overwrite,
+            folds=folds,
+            transforms=transforms,
+            use_bc_learning=use_bc_learning,
+            strong_augment=strong_augment,
+            compute_features=compute_features)
 
-    def _create_dataset(self):
-        print('Converting sounds to {}Hz...'.format(
-            self.audio_rate))
-        for idx, row in self.df.iterrows():
-            src_path = join(self.root, row.path)
-            dst_path = src_path.replace('audio/', 'tmp/')
-            os.makedirs(join(self.root, 'tmp'), exist_ok=True)
-            U.convert_ar(src_path, dst_path, self.audio_rate)
 
-        # Create npz file
-        print('Creating corresponding npz file...')
-        kitchen20 = {}
-        for fold in range(1, 6):
-            kitchen20['fold{}'.format(fold)] = {}
-            kitchen20['fold{}'.format(fold)]['sounds'] = []
-            kitchen20['fold{}'.format(fold)]['labels'] = []
+class ESC10(ESC):
+    def __init__(self,
+                 csv_file='meta/esc50.csv',
+                 root=ESC10_PATH,
+                 threshold_sound=0,
+                 audio_rate=16000,
+                 overwrite=False,
+                 folds=[1,2,3,4,5],
+                 transforms=[],
+                 use_bc_learning=False,
+                 strong_augment=False,
+                 compute_features=False):
+        # Fix path in df
+        self.df = pd.read_csv(join(root, csv_file))
+        self.df = self.df[self.df.esc10 == True]
+        self.df['path'] = 'audio/' + self.df.filename
 
-            for idx, row in self.df[self.df.fold == fold - 1].iterrows():
-                wav_file = row.path.replace('audio/', 'tmp/')
-                wav_file = join(self.root, wav_file)
-                sound = wavio.read(wav_file).data.T[0]
-                if self.threshold_sound == 0:  # Remove silent sections
-                    start = sound.nonzero()[0].min()
-                    end = sound.nonzero()[0].max()
-                    sound = sound[start: end + 1]
-                else:
-                    sound = U.filter_silent_audio(
-                        sound,
-                        self.audio_rate,
-                        m_section_engy_thr=self.threshold_sound)
-                label = row.target
-                kitchen20['fold{}'.format(fold)]['sounds'].append(sound)
-                kitchen20['fold{}'.format(fold)]['labels'].append(label)
+        super().__init__(
+            csv_file=csv_file,
+            root=root,
+            threshold_sound=threshold_sound,
+            audio_rate=audio_rate,
+            overwrite=overwrite,
+            folds=folds,
+            transforms=transforms,
+            use_bc_learning=use_bc_learning,
+            strong_augment=strong_augment,
+            compute_features=compute_features)
 
-        print('Saving')
-        np.savez(self.db_path, **kitchen20)
-        shutil.rmtree(join(self.root, 'tmp'))
-        print('Converting sounds to {}Hz...'.format(
-            self.audio_rate))
-        for idx, row in self.df.iterrows():
-            src_path = join(self.root, row.path)
-            dst_path = src_path.replace('audio/', 'tmp/')
-            os.makedirs(join(self.root, 'tmp'), exist_ok=True)
-            U.convert_ar(src_path, dst_path, self.audio_rate)
 
-        # Create npz file
-        print('Creating corresponding npz file...')
-        kitchen20 = {}
-        for fold in range(1, 6):
-            kitchen20['fold{}'.format(fold)] = {}
-            kitchen20['fold{}'.format(fold)]['sounds'] = []
-            kitchen20['fold{}'.format(fold)]['labels'] = []
+class ESC70(ESC):
+    def __init__(self,
+                 csv_file=['meta/esc50.csv',
+                           'kitchen20.csv'],
+                 root=ESC70_PATH,
+                 threshold_sound=0,
+                 audio_rate=16000,
+                 overwrite=False,
+                 folds=[1,2,3,4,5],
+                 transforms=[],
+                 use_bc_learning=False,
+                 strong_augment=False,
+                 compute_features=False):
+        # Merge ESC50 and kitchen20's csv files
+        dfs = []
+        for r, f in zip(root, csv_file):
+            df = pd.read_csv(join(r, f))
+            if 'path' not in df.columns:
+                df['path'] = 'audio/' + df.filename
+            dfs.append(df)
+        self.df = dfs[0].append(dfs[1:])
 
-            for idx, row in self.df[self.df.fold == fold - 1].iterrows():
-                wav_file = row.path.replace('audio/', 'tmp/')
-                wav_file = join(self.root, wav_file)
-                sound = wavio.read(wav_file).data.T[0]
-                if self.threshold_sound == 0:  # Remove silent sections
-                    start = sound.nonzero()[0].min()
-                    end = sound.nonzero()[0].max()
-                    sound = sound[start: end + 1]
-                else:
-                    sound = U.filter_silent_audio(
-                        sound,
-                        self.audio_rate,
-                        m_section_engy_thr=self.threshold_sound)
-                label = row.target
-                kitchen20['fold{}'.format(fold)]['sounds'].append(sound)
-                kitchen20['fold{}'.format(fold)]['labels'].append(label)
+        super().__init__(
+            csv_file=csv_file,
+            root=root,
+            threshold_sound=threshold_sound,
+            audio_rate=audio_rate,
+            overwrite=overwrite,
+            folds=folds,
+            transforms=transforms,
+            use_bc_learning=use_bc_learning,
+            strong_augment=strong_augment,
+            compute_features=compute_features)
 
-        print('Saving')
-        np.savez(self.db_path, **kitchen20)
-        shutil.rmtree(join(self.root, 'tmp'))
 
-if __name__ == '__main__':
-    inputLength = 48000
-    nCrops = 5
+class Kitchen20(ESC):
+    def __init__(self,
+                 csv_file='kitchen20b.csv',
+                 root=KITCHEN20_PATH,
+                 threshold_sound=0,
+                 audio_rate=16000,
+                 overwrite=False,
+                 folds=[1,2,3,4,5],
+                 transforms=[],
+                 use_bc_learning=False,
+                 strong_augment=False,
+                 compute_features=False):
+        super().__init__(
+            csv_file=csv_file,
+            root=root,
+            threshold_sound=threshold_sound,
+            audio_rate=audio_rate,
+            overwrite=overwrite,
+            folds=folds,
+            transforms=transforms,
+            use_bc_learning=use_bc_learning,
+            strong_augment=strong_augment,
+            compute_features=compute_features)
 
-    train = Kitchen20(root='../',
-                      folds=[1,2,3,4],
-                      transforms=[
-                          U.random_scale(1.25),  # Strong augment
-                          U.padding(inputLength // 2),  # Padding
-                          U.random_crop(inputLength),  # Random crop
-                          U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                          U.random_flip()],  # Random +-
-                      overwrite=False,
-                      use_bc_learning=True)
 
-    test = Kitchen20(root='../',
-                     folds=[5,],
-                     transforms=[
-                         U.padding(inputLength // 2),  # Long audio
-                         U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                         U.multi_crop(inputLength, nCrops),  # Multiple crops
-                         U.random_flip()],  # Random +-
-                     overwrite=False)
-    
-    train = ESC50(root='../ESC-50/',
-                  csv_file='./meta/esc50.csv',
-                  folds=[1,2,3,4],
-                  transforms=[
-                      U.random_scale(1.25),  # Strong augment
-                      U.padding(inputLength // 2),  # Padding
-                      U.random_crop(inputLength),  # Random crop
-                      U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                      U.random_flip()],  # Random +-
-                  overwrite=False,
-                  use_bc_learning=True)
 
-    def mtest(idx):
-        import matplotlib.pyplot as plt
-        import sounddevice as sd
-        from pprint import pprint
-        audio, lbls = train[idx]
-        pprint(list(zip(list(lbls), test.classes)))
-        sd.play(audio, 16000)
-        plt.plot(audio)
-        plt.show()
-
-    mtest(3)
-        
-
-    def _create_dataset(self):
-        print('Converting sounds to {}Hz...'.format(
-            self.audio_rate))
-        for idx, row in self.df.iterrows():
-            src_path = join(self.root, row.path)
-            dst_path = src_path.replace('audio/', 'tmp/')
-            os.makedirs(join(self.root, 'tmp'), exist_ok=True)
-            U.convert_ar(src_path, dst_path, self.audio_rate)
-
-        # Create npz file
-        print('Creating corresponding npz file...')
-        kitchen20 = {}
-        for fold in range(1, 6):
-            kitchen20['fold{}'.format(fold)] = {}
-            kitchen20['fold{}'.format(fold)]['sounds'] = []
-            kitchen20['fold{}'.format(fold)]['labels'] = []
-
-            for idx, row in self.df[self.df.fold == fold - 1].iterrows():
-                wav_file = row.path.replace('audio/', 'tmp/')
-                wav_file = join(self.root, wav_file)
-                sound = wavio.read(wav_file).data.T[0]
-                if self.threshold_sound == 0:  # Remove silent sections
-                    start = sound.nonzero()[0].min()
-                    end = sound.nonzero()[0].max()
-                    sound = sound[start: end + 1]
-                else:
-                    sound = U.filter_silent_audio(
-                        sound,
-                        self.audio_rate,
-                        m_section_engy_thr=self.threshold_sound)
-                label = row.target
-                kitchen20['fold{}'.format(fold)]['sounds'].append(sound)
-                kitchen20['fold{}'.format(fold)]['labels'].append(label)
-
-        print('Saving')
-        np.savez(self.db_path, **kitchen20)
-        shutil.rmtree(join(self.root, 'tmp'))
-        print('Converting sounds to {}Hz...'.format(
-            self.audio_rate))
-        for idx, row in self.df.iterrows():
-            src_path = join(self.root, row.path)
-            dst_path = src_path.replace('audio/', 'tmp/')
-            os.makedirs(join(self.root, 'tmp'), exist_ok=True)
-            U.convert_ar(src_path, dst_path, self.audio_rate)
-
-        # Create npz file
-        print('Creating corresponding npz file...')
-        kitchen20 = {}
-        for fold in range(1, 6):
-            kitchen20['fold{}'.format(fold)] = {}
-            kitchen20['fold{}'.format(fold)]['sounds'] = []
-            kitchen20['fold{}'.format(fold)]['labels'] = []
-
-            for idx, row in self.df[self.df.fold == fold - 1].iterrows():
-                wav_file = row.path.replace('audio/', 'tmp/')
-                wav_file = join(self.root, wav_file)
-                sound = wavio.read(wav_file).data.T[0]
-                if self.threshold_sound == 0:  # Remove silent sections
-                    start = sound.nonzero()[0].min()
-                    end = sound.nonzero()[0].max()
-                    sound = sound[start: end + 1]
-                else:
-                    sound = U.filter_silent_audio(
-                        sound,
-                        self.audio_rate,
-                        m_section_engy_thr=self.threshold_sound)
-                label = row.target
-                kitchen20['fold{}'.format(fold)]['sounds'].append(sound)
-                kitchen20['fold{}'.format(fold)]['labels'].append(label)
-
-        print('Saving')
-        np.savez(self.db_path, **kitchen20)
-        shutil.rmtree(join(self.root, 'tmp'))
-
-if __name__ == '__main__':
-    inputLength = 48000
-    nCrops = 5
-
-    train = Kitchen20(root='../',
-                      folds=[1,2,3,4],
-                      transforms=[
-                          U.random_scale(1.25),  # Strong augment
-                          U.padding(inputLength // 2),  # Padding
-                          U.random_crop(inputLength),  # Random crop
-                          U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                          U.random_flip()],  # Random +-
-                      overwrite=False,
-                      use_bc_learning=True)
-
-    test = Kitchen20(root='../',
-                     folds=[5,],
-                     transforms=[
-                         U.padding(inputLength // 2),  # Long audio
-                         U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                         U.multi_crop(inputLength, nCrops),  # Multiple crops
-                         U.random_flip()],  # Random +-
-                     overwrite=False)
-    
-    train = ESC50(root='../ESC-50/',
-                  csv_file='./meta/esc50.csv',
-                  folds=[1,2,3,4],
-                  transforms=[
-                      U.random_scale(1.25),  # Strong augment
-                      U.padding(inputLength // 2),  # Padding
-                      U.random_crop(inputLength),  # Random crop
-                      U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                      U.random_flip()],  # Random +-
-                  overwrite=False,
-                  use_bc_learning=True)
-
-    def mtest(idx):
-        import matplotlib.pyplot as plt
-        import sounddevice as sd
-        from pprint import pprint
-        audio, lbls = train[idx]
-        pprint(list(zip(list(lbls), test.classes)))
-        sd.play(audio, 16000)
-        plt.plot(audio)
-        plt.show()
-
-    mtest(3)
