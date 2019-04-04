@@ -7,24 +7,25 @@ from kitchen20 import esc
 
 
 class TestESC(unittest.TestCase):
-    def test_esc70_loading(self):
-        """Test that esc70 gets properly loaded"""
-        pass
+    def test_esc10_loading(self):
+        """Test that esc50 gets properly loaded"""
+        ESC10 = esc.ESC10
+        self._test_dataset_load(ESC10)
 
     def test_esc50_loading(self):
         """Test that esc50 gets properly loaded"""
-        esc50 = esc.ESC50
-        self._test_dataset_load(esc50,
-                                root='/media/moreaux-gpu/Data/Dataset/ESC-50/')
-        
+        ESC50 = esc.ESC50
+        self._test_dataset_load(ESC50)
 
-    def test_esc10_loading(self):
-        """Test that esc50 gets properly loaded"""
-        pass
+    def test_esc70_loading(self):
+        """Test that esc10 gets properly loaded"""
+        ESC70 = esc.ESC70
+        self._test_dataset_load(ESC70)
 
     def test_kitchen20_loading(self):
         """Test that kitchen20 gets properly loaded"""
         Kitchen20 = kitchen20.kitchen20.Kitchen20
+        Kitchen20 = esc.Kitchen20
         self._test_dataset_load(Kitchen20)
         
     def _test_dataset_load(self, Dataset, root=None):
@@ -32,21 +33,24 @@ class TestESC(unittest.TestCase):
         inputLength = 48000
         nCrops = 5
     
-        params = {'folds': [1,],
-                  'use_bc_learning': False}
+        params = {}
+        params['folds'] = [1]
+        params['use_bc_learning'] = False
+        params['overwrite'] = False
         if root is not None:
             params['root'] = root
 
         train = Dataset(**params)
-
         testing.assert_equal(train[1], train[1])
         
+        # Test 2, assert transformations are happening
+        params['folds'] = [5]
         params['transforms'] = [
-                            U.random_scale(1.25),  # Strong augment
-                            U.padding(inputLength // 2),  # Padding
-                            U.random_crop(inputLength),  # Random crop
-                            U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
-                            U.random_flip()]
+            U.random_scale(1.25),  # Strong augment
+            U.padding(inputLength // 2),  # Padding
+            U.random_crop(inputLength),  # Random crop
+            U.normalize(float(2 ** 16 / 2)),  # 16 bit signed
+            U.random_flip()]
 
         train = Dataset(**params)
 
