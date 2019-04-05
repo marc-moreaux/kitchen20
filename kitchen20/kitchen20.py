@@ -19,7 +19,7 @@ class Kitchen20(Dataset):
 
     def __init__(self,
                  root=dl_dir,
-                 csv_file='kitchen20.csv',
+                 csv_file='kitchen20b.csv',
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
