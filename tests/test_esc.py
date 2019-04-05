@@ -37,6 +37,7 @@ class TestESC(unittest.TestCase):
         params['folds'] = [1]
         params['use_bc_learning'] = False
         params['overwrite'] = False
+        params['audio_rate'] = 16000
         if root is not None:
             params['root'] = root
 
@@ -45,6 +46,7 @@ class TestESC(unittest.TestCase):
         
         # Test 2, assert transformations are happening
         params['folds'] = [5]
+        params['audio_rate'] = 44100
         params['transforms'] = [
             U.random_scale(1.25),  # Strong augment
             U.padding(inputLength // 2),  # Padding
