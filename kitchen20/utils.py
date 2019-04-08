@@ -20,20 +20,18 @@ def compute_mfcc(sound, rate, frame=512):
     return mfcc
         
 
+def group(iterator, count):
+    '''Group an iterator (like a list) in chunks of <count>'''
+    itr = iter(iterator)
+    while True:
+        yield tuple([next(itr) for i in range(count)])
+
+
 def compute_zcr(sound, frame_size=512):
     '''Compute zero crossing rate'''
-
-    def _get_frame(sound, index):
-        if index < 0:
-            return None
-        return sound[(index * frame_size):(index + 1) * frame_size]
-
     zcr = []
-    frames = int(np.ceil(len(sound) / frame_size))
-    
-    for i in range(0, frames):
-        frame = _get_frame(sound, i)
-        zcr.append(np.mean(0.5 * np.abs(np.diff(np.sign(frame)))))
+    for frame in group(sound, frame_size):
+        zcr.append(np.nanmean(0.5 * np.abs(np.diff(np.sign(frame)))))
 
     zcr = np.asarray(zcr)
     return zcr
