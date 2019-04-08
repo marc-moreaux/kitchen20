@@ -1,21 +1,24 @@
 import os
-import torch
 import wavio
 import shutil
 import random
 import numpy as np
 import pandas as pd
 from os.path import join
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from . import utils as U
-from abc import ABC, abstractmethod
+from abc import ABC
+import configparser
+
 
 package_dir, _ = os.path.split(os.path.abspath(__file__))
-dl_dir = os.path.join(package_dir, '..')
-ESC10_PATH = '/media/moreaux-gpu/Data/Dataset/ESC-50'
-ESC50_PATH = '/media/moreaux-gpu/Data/Dataset/ESC-50'
-ESC70_PATH = ['/media/moreaux-gpu/Data/Dataset/ESC-50', dl_dir]
-KITCHEN20_PATH = dl_dir
+
+config = configparser.ConfigParser()
+for fName in ['config_local.ini', 'config.ini']:
+    f_path = join(package_dir, fName)
+    if os.path.isfile(f_path):
+        config.read(f_path)
+        continue
 
 
 class ESC(Dataset, ABC):
@@ -23,11 +26,11 @@ class ESC(Dataset, ABC):
 
     def __init__(self,
                  csv_file,
-                 root=dl_dir,
+                 root,
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
-                 folds=[1,2,3,4,5],
+                 folds=[1, 2, 3, 4, 5],
                  transforms=[],
                  use_bc_learning=False,
                  strong_augment=False,
@@ -73,7 +76,7 @@ class ESC(Dataset, ABC):
         self.use_bc_learning = use_bc_learning
         self.strongAugment = strong_augment
         self.get_db_folds()  # Fils self.sounds and self.labels
-        
+
         # Maybe compute mfcc and zcr
         if compute_features:
             self.compute_features()
@@ -138,10 +141,10 @@ class ESC(Dataset, ABC):
         else:  # Training phase of standard learning or testing phase
             sound = sound.astype(np.float32)
             label = np.array(label, dtype=np.int32)
-        
+
         if self.strongAugment:
             sound = U.random_gain(6)(sound).astype(np.float32)
-        
+
         return sound, label
 
     def _transform_silent_section(self, sound):
@@ -157,7 +160,7 @@ class ESC(Dataset, ABC):
         return sound
 
     def _create_dataset(self):
-        
+
         # Root and df to lists
         roots = self.root
         dfs = self.df
@@ -180,12 +183,11 @@ class ESC(Dataset, ABC):
         print('Creating corresponding npz file...')
         dataset = {}
         for fold in range(1, 6):
+            fold_name = 'fold{}'.format(fold)
+            dataset[fold_name] = {}
+            dataset[fold_name]['sounds'] = []
+            dataset[fold_name]['labels'] = []
             for root, df in zip(roots, dfs):
-                fold_name = 'fold{}'.format(fold)
-                dataset[fold_name] = {}
-                dataset[fold_name]['sounds'] = []
-                dataset[fold_name]['labels'] = []
-
                 for idx, row in df[df.fold == fold].iterrows():
                     wav_file = row.path.replace('audio/', 'tmp/')
                     wav_file = join(root, wav_file)
@@ -204,11 +206,11 @@ class ESC(Dataset, ABC):
 class ESC50(ESC):
     def __init__(self,
                  csv_file='meta/esc50.csv',
-                 root=ESC50_PATH,
+                 root=config['Paths']['ESC50'],
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
-                 folds=[1,2,3,4,5],
+                 folds=[1,  2, 3, 4, 5],
                  transforms=[],
                  use_bc_learning=False,
                  strong_augment=False,
@@ -233,11 +235,11 @@ class ESC50(ESC):
 class ESC10(ESC):
     def __init__(self,
                  csv_file='meta/esc50.csv',
-                 root=ESC10_PATH,
+                 root=config['Paths']['ESC10'],
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
-                 folds=[1,2,3,4,5],
+                 folds=[1, 2, 3, 4, 5],
                  transforms=[],
                  use_bc_learning=False,
                  strong_augment=False,
@@ -264,12 +266,12 @@ class ESC70(ESC):
     def __init__(self,
                  csv_file=['meta/esc50.csv',
                            'kitchen20.csv'],
-                 root=[ESC50_PATH,
-                       KITCHEN20_PATH],
+                 root=[config['Paths']['ESC50'],
+                       config['Paths']['KITCHEN20']],
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
-                 folds=[1,2,3,4,5],
+                 folds=[1, 2, 3, 4, 5],
                  transforms=[],
                  use_bc_learning=False,
                  strong_augment=False,
@@ -299,11 +301,11 @@ class ESC70(ESC):
 class Kitchen20(ESC):
     def __init__(self,
                  csv_file='kitchen20.csv',
-                 root=KITCHEN20_PATH,
+                 root=config['Paths']['KITCHEN20'],
                  threshold_sound=0,
                  audio_rate=16000,
                  overwrite=False,
-                 folds=[1,2,3,4,5],
+                 folds=[1, 2, 3, 4, 5],
                  transforms=[],
                  use_bc_learning=False,
                  strong_augment=False,
@@ -319,5 +321,4 @@ class Kitchen20(ESC):
             use_bc_learning=use_bc_learning,
             strong_augment=strong_augment,
             compute_features=compute_features)
-
 
