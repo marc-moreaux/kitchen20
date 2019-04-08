@@ -24,28 +24,26 @@ class TestESC(unittest.TestCase):
 
     def test_kitchen20_loading(self):
         """Test that kitchen20 gets properly loaded"""
-        Kitchen20 = kitchen20.kitchen20.Kitchen20
         Kitchen20 = esc.Kitchen20
         self._test_dataset_load(Kitchen20)
-        
+
     def _test_dataset_load(self, Dataset, root=None):
         """Generic test over loading subclass of esc"""
         inputLength = 48000
-        nCrops = 5
-    
+
         params = {}
         params['folds'] = [1]
         params['use_bc_learning'] = False
-        params['overwrite'] = False
+        params['overwrite'] = True
         params['audio_rate'] = 16000
         if root is not None:
             params['root'] = root
 
         train = Dataset(**params)
         testing.assert_equal(train[1], train[1])
-        
+
         # Test 2, assert transformations are happening
-        params['folds'] = [5]
+        params['folds'] = [1, 2, 3, 4, 5]
         params['audio_rate'] = 44100
         params['transforms'] = [
             U.random_scale(1.25),  # Strong augment
@@ -59,7 +57,8 @@ class TestESC(unittest.TestCase):
         self.assertRaises(AssertionError,
                           testing.assert_array_equal,
                           train[1], train[1])
-
+        self.assertEqual(len(train.sounds),
+                         40 * train.nClasses)
 
 
 if __name__ == '__main__':
