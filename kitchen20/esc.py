@@ -53,22 +53,27 @@ class ESC(Dataset, ABC):
         self.audio_rate = audio_rate
         self.threshold_sound = threshold_sound
         self.csv_file = csv_file
+
+        # Process root and related values
         if type(root) is list:
             root = root[0]
-        if 'df' not in self.__dir__():
-            self.df = pd.read_csv(join(root, csv_file))
         self.db_path = join(root, './audio/{}_{}.npz'.format(
             type(self).__name__, audio_rate))
+
+        # Read the csv and process it
+        if 'df' not in self.__dir__():
+            self.df = pd.read_csv(join(root, csv_file))
+        self.dfs = self.df
+        if type(self.df) is list:
+            self.df = self.df[0].append(self.df[1:])
+        self.classes = self._ordered_classes()
+        self.nClasses = len(self.classes)
 
         # Maybe create dataset
         if not os.path.isfile(self.db_path) or overwrite:
             self._create_dataset()
 
         # Maybe merge df
-        if type(self.df) is list:
-            self.df = self.df[0].append(self.df[1:])
-        self.classes = self._ordered_classes()
-        self.nClasses = len(self.classes)
 
         # Get item processing
         self.folds = folds
@@ -82,6 +87,7 @@ class ESC(Dataset, ABC):
             self.compute_features()
 
     def compute_features(self):
+        print('Computing features...')
         self.mfcc = []
         self.zcr = []
         for s in self.sounds:
@@ -90,9 +96,18 @@ class ESC(Dataset, ABC):
             self.zcr.append(U.compute_zcr(s, 512))
 
     def _ordered_classes(self):
-        classes = set(zip(self.df.target, self.df.category))
-        classes = sorted(classes, key=lambda x: x[0])
-        classes = [c[1] for c in classes]
+        '''Retrieve classes from df ignoring target if there is more than
+        one category name per target'''
+        df = self.df
+        if(set(zip(df.target, df.category)) > set(df.target)):
+            # More than a category per target, create new ordering (alphabetic)
+            classes = sorted(set(df.category))
+        else:
+            # No problem in target and category, create a list of classes
+            # in odered by target value
+            classes = set(zip(df.target, df.category))
+            classes = sorted(classes, key=lambda x: x[0])
+            classes = [c[1] for c in classes]
         return classes
 
     def __len__(self):
@@ -163,16 +178,16 @@ class ESC(Dataset, ABC):
 
         # Root and df to lists
         roots = self.root
-        dfs = self.df
+        dfs = self.dfs
         if type(roots) is not list:
             roots = [roots]
         if type(dfs) is not list:
             dfs = [dfs]
 
         # Convert audio
+        print('Converting sounds to {}Hz...'.format(
+            self.audio_rate))
         for root, df in zip(roots, dfs):
-            print('Converting sounds to {}Hz...'.format(
-                self.audio_rate))
             for idx, row in df.iterrows():
                 src_path = join(root, row.path)
                 dst_path = src_path.replace('audio/', 'tmp/')
@@ -193,7 +208,7 @@ class ESC(Dataset, ABC):
                     wav_file = join(root, wav_file)
                     sound = wavio.read(wav_file).data.T[0]
                     sound = self._transform_silent_section(sound)
-                    label = row.target
+                    label = self.classes.index(row.category)
                     dataset[fold_name]['sounds'].append(sound)
                     dataset[fold_name]['labels'].append(label)
 
