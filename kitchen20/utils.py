@@ -7,7 +7,6 @@ import torch
 import glob
 import os
 
-import chainer.functions as F
 
 
 def compute_mfcc(sound, rate, frame=512):
@@ -260,6 +259,7 @@ def kl_divergence(y, t):
     nonzero_idx = torch.nonzero(t) 
     entropy = - torch.sum(t[nonzero_idx] * torch.log(t[nonzero_idx]))
     crossEntropy = - torch.sum(t * torch.log_softmax(y))
+    # import chainer.functions as F
     # entropy = - F.sum(t[t.data.nonzero()] * F.log(t[t.data.nonzero()]))
     # crossEntropy = - F.sum(t * F.log_softmax(y))
 
