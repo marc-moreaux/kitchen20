@@ -1,12 +1,41 @@
 from os.path import join
 import numpy as np
 import subprocess
+import librosa
 import random
 import torch
 import glob
 import os
 
-import chainer.functions as F
+
+
+def compute_mfcc(sound, rate, frame=512):
+    '''MFCC computation with default settings
+    (2048 FFT window length, 512 hop length, 128 bands)'''
+    melspectrogram = librosa.feature.melspectrogram(sound,
+                                                    sr=rate,
+                                                    hop_length=frame)
+    logamplitude = librosa.amplitude_to_db(melspectrogram)
+    mfcc = librosa.feature.mfcc(S=logamplitude, n_mfcc=13).transpose()
+    return mfcc
+        
+
+def group(iterator, count):
+    '''Group an iterator (like a list) in chunks of <count>'''
+    itr = iter(iterator)
+    while True:
+        yield tuple([next(itr) for i in range(count)])
+
+
+def compute_zcr(sound, frame_size=512):
+    '''Compute zero crossing rate'''
+    zcr = []
+    for frame in group(sound, frame_size):
+        zcr.append(np.nanmean(0.5 * np.abs(np.diff(np.sign(frame)))))
+
+    zcr = np.asarray(zcr)
+    return zcr
+
 
 def convert_ar(src_path, dst_path, ar):
     if not os.path.isfile(dst_path):
@@ -228,6 +257,7 @@ def kl_divergence(y, t):
     nonzero_idx = torch.nonzero(t) 
     entropy = - torch.sum(t[nonzero_idx] * torch.log(t[nonzero_idx]))
     crossEntropy = - torch.sum(t * torch.log_softmax(y))
+    # import chainer.functions as F
     # entropy = - F.sum(t[t.data.nonzero()] * F.log(t[t.data.nonzero()]))
     # crossEntropy = - F.sum(t * F.log_softmax(y))
 
