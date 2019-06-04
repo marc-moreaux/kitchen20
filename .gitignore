@@ -1,3 +1,4 @@
+**/*.npz
 audio_raw/*
 *.swp
 
