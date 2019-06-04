@@ -147,4 +147,4 @@ class Filter_silent_audio(object):
             new_sound[i: i + n_to_keep] = sound_to_keep
         new_sound[i + n_to_keep:] = sound_to_keep[: len(new_sound) - i - n_to_keep]
 
-    return sound
+        return sound
