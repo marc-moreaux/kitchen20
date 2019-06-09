@@ -216,9 +216,9 @@ def a_weight(fs, n_fft, min_db=-80.0):
 
 
 def compute_gain(sound, fs, min_db=-80.0, mode='A_weighting'):
-    if fs == 16000:
+    if 15000 < fs and fs < 17000:  # fs == 16000:
         n_fft = 2048
-    elif fs == 44100:
+    elif 43000 < fs and fs < 45000:  # fs == 44100:
         n_fft = 4096
     else:
         raise Exception('Invalid fs {}'.format(fs))
