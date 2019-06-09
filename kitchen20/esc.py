@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 from os.path import join
 from torch.utils.data import Dataset
-from . import utils as U
+from torchaudio import transforms
+import torch
+try:
+    from . import utils as U
+except Exception:
+    import utils as U
 from abc import ABC
 import configparser
 
@@ -128,8 +133,9 @@ class ESC(Dataset, ABC):
             self.folds_nb.extend([fold, ] * len(labels))
 
     def preprocess(self, sound):
-        for f in self.transforms:
-            sound = f(sound)
+        sound = self.transforms(sound)
+        # for f in self.transforms
+            # sound = f(sound)
         return sound
 
     def __getitem__(self, idx):
@@ -154,8 +160,7 @@ class ESC(Dataset, ABC):
             label = (eye[label] * r + eye[label2] * (1 - r)).astype(np.float32)
 
         else:  # Training phase of standard learning or testing phase
-            sound = sound.astype(np.float32)
-            label = np.array(label, dtype=np.int32)
+            label = torch.tensor(label).int()
 
         if self.strongAugment:
             sound = U.random_gain(6)(sound).astype(np.float32)
@@ -337,3 +342,61 @@ class Kitchen20(ESC):
             strong_augment=strong_augment,
             compute_features=compute_features)
 
+
+if __name__ == '__main__':
+    from torch.utils.data import DataLoader
+    from torch import nn
+    from torch import optim
+
+    input_time = 1.5
+    audio_rate = 16384
+    input_length = int(audio_rate * input_time)
+
+    audio_set = Kitchen20(
+        root='/media/data/dataest/kitchen20/',
+        folds=[1, 2, 3, 4],
+        transforms=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.AddChannelDimension(channel_first=True),
+            transforms.RandomStretch(1.25),
+            transforms.Scale(2 ** 16 / 2),
+            transforms.Pad(input_length // 2),
+            transforms.RandomCrop(input_length),
+            transforms.RandomOpposite()]),
+        overwrite=False,
+        use_bc_learning=False,
+        audio_rate=audio_rate)
+
+    audio_loader = DataLoader(audio_set, batch_size=2,
+                              shuffle=True, num_workers=4)
+
+    # Load a sample network
+    net = nn.Sequential(
+        nn.Conv1d(1, 32, 9, 3), nn.ReLU(), nn.BatchNorm1d(32),
+        nn.Conv1d(32, 32, 9, 3), nn.ReLU(), nn.BatchNorm1d(32),
+        nn.Conv1d(32, 32, 9, 3), nn.ReLU(), nn.BatchNorm1d(32),
+        nn.Conv1d(32, 20, 9, 3), nn.ReLU(),
+        nn.AdaptiveAvgPool1d(1)
+    )
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+
+    # Training loop
+    n_epochs = 5
+    summary = {'loss': [[] for _ in range(n_epochs)]}
+    for e in range(n_epochs):
+        for i, (sounds, labels) in enumerate(audio_loader):
+
+            # Zero the grads
+            optimizer.zero_grad()
+
+            # Run the Net
+            x = net(sounds)
+            x = x.view(x.size()[:-1])
+
+            # Optimize net
+            loss = criterion(x, labels.long())
+            loss.backward()
+            optimizer.step()
+            summary['loss'][e].append(loss.item())
+        print(np.mean(summary['loss'][e]))
