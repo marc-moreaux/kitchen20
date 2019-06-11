@@ -8,7 +8,6 @@ import glob
 import os
 
 
-
 def compute_mfcc(sound, rate, frame=512):
     '''MFCC computation with default settings
     (2048 FFT window length, 512 hop length, 128 bands)'''
@@ -18,7 +17,7 @@ def compute_mfcc(sound, rate, frame=512):
     logamplitude = librosa.amplitude_to_db(melspectrogram)
     mfcc = librosa.feature.mfcc(S=logamplitude, n_mfcc=13).transpose()
     return mfcc
-        
+ 
 
 def group(iterator, count):
     '''Group an iterator (like a list) in chunks of <count>'''
@@ -275,4 +274,3 @@ def to_hms(time):
         line = '{}m{:02d}s'.format(m, s)
 
     return line
-

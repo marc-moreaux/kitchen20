@@ -132,10 +132,10 @@ class ESC(Dataset, ABC):
             self.labels.extend(labels)
             self.folds_nb.extend([fold, ] * len(labels))
 
+        self.sounds = [torch.tensor(s).unsqueeze(0) for s in self.sounds]
+
     def preprocess(self, sound):
         sound = self.transforms(sound)
-        # for f in self.transforms
-            # sound = f(sound)
         return sound
 
     def __getitem__(self, idx):
@@ -356,8 +356,6 @@ if __name__ == '__main__':
         root='/media/data/dataest/kitchen20/',
         folds=[1, 2, 3, 4],
         transforms=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.AddChannelDimension(channel_first=True),
             transforms.RandomStretch(1.25),
             transforms.Scale(2 ** 16 / 2),
             transforms.Pad(input_length // 2),
