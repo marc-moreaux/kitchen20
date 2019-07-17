@@ -119,7 +119,7 @@ class ESC(Dataset, ABC):
         return len(self.sounds)
 
     def get_db_folds(self):
-        full_db = np.load(self.db_path)
+        full_db = np.load(self.db_path, allow_pickle=True)
         self.sounds = []
         self.labels = []
         self.folds_nb = []
